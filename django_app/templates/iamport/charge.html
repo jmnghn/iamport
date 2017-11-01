@@ -1,0 +1,170 @@
+{% load staticfiles %}
+
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Iamport; 테스트</title>
+    <script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
+    <script type="text/javascript" src="https://service.iamport.kr/js/iamport.payment-1.1.5.js"></script>
+    <script type="text/javascript">
+        $(function () {
+            var IMP = window.IMP;
+            IMP.init('imp17349882'); // Required Code!!!! Important
+
+            $('.charge-button').on('click', function (e) {
+                var amount = parseInt($('.charge-total #total').text().replace(',', '').slice(0, -1));
+                var type = $('.charge-type input:checked').val();
+                var merchant_id = AjaxStoreTransaction(e, amount, type);
+                var pg = 'html5_inicis';
+                console.log("1: " + type + ", " + pg);
+                if (type === 'kakao') pg = 'kakao';
+                console.log("2: " + type + ", " + pg);
+
+                if (merchant_id !== '') {
+                    // iamport Request pay
+                    console.log("3: " + type + ", " + pg);
+                    IMP.request_pay({
+                        pg: 'kakao',
+                        pay_method: type,
+                        merchant_uid: merchant_id,
+                        name: 'point' + amount + 'Charge',
+                        amount: amount,
+                        buyer_email: '',    // not required, option
+                        buyer_name: '',    // not required, option
+                        buyer_tel: '',    // Todo: (번역) required !!!, 누락되거나 blank일 때 일부 PG사에서 오류 발생
+                        buyer_addr: '',    // not required, option
+                        buyer_postcode: '',    // not required, option
+                        escrow: false,
+                        digital: true
+                    }, function (rsp) {
+                        if (rsp.success) {
+                            var msg = 'Your payment was successful.';
+                            msg += 'imp_uid : ' + rsp.imp_uid;
+                            msg += 'merchant_uid : ' + rsp.merchant_uid;
+                            msg += 'Amount of payment : ' + rsp.paid_amount;
+                            msg += 'Card Authorization Number : ' + rsp.apply_num;
+                            // point validation
+                            ImpTransaction(e, rsp.merchant_uid, rsp.imp_uid, rsp.paid_amount);
+                            console.log('Run...1...');
+                        } else {
+                            var msg = 'Payment failed.';
+                            msg += 'error message : ' + rsp.error_msg;
+                            console.log(msg);
+                            console.log('Run...2...');
+                        }
+                    });
+                }
+            });
+        });
+
+        // Get merchant_id
+        function AjaxStoreTransaction(e, amount, type) {
+            e.preventDefault();
+            var merchant_id = '';
+            var request = $.ajax({
+                method: "POST",
+                url: '{% url "point_checkout" %}',
+                async: false,
+                data: {
+                    amount: amount,
+                    type: type,
+                    csrfmiddlewaretoken: '{{ csrf_token }}'
+                }
+            });
+            request.done(function (data) {
+                if (data.works) {
+                    merchant_id = data.merchant_id;
+                }
+            });
+            request.fail(function (jqXHR, textStatus) {
+                console.log(jqXHR)
+                console.log(textStatuss)
+                if (jqXHR.status == 404) {
+                    alert("page not found.");
+                } else if (jqXHR.status == 403) {
+                    alert("login required");
+                } else {
+                    alert("Something went wrong. Please try again.");
+                }
+            });
+            return merchant_id;
+        }
+
+        // point validation
+        function ImpTransaction(e, merchant_id, imp_id, amount) {
+            e.preventDefault();
+            var request = $.ajax({
+                method: "POST",
+                url: '{% url "point_validation" %}',
+                async: false,
+                data: {
+                    merchant_id: merchant_id,
+                    imp_id: imp_id,
+                    amount: amount,
+                    csrfmiddlewaretoken: '{{ csrf_token }}'
+                }
+            });
+            request.done(function (data) {
+                if (data.works) {
+                }
+            });
+            request.fail(function (jqXHR, textStatus) {
+                if (jqXHR.status === 404) {
+                    alert("page not found.");
+                } else if (jqXHR.status === 403) {
+                    alert("login required.");
+                } else {
+                    alert("Something went wrong. Please try again.");
+                }
+            });
+        }
+    </script>
+</head>
+<body>
+{% if user.is_authenticated %}
+{{ user }} is connected.
+{% else %}
+login required!
+{% endif %}
+
+<div class="charge-type">
+    <div class="billing-title">
+        Payment method
+    </div>
+    <div class="billing-radio">
+        <label class="control control--radio">
+            <input type="radio" name="type" value="card" checked="checked"/>
+            Credit card
+        </label>
+        <label class="control control--radio">
+            <input type="radio" name="type" value="trans"/>
+            Real-time account transfer
+        </label>
+        <label class="control control--radio">
+            <input type="radio" name="type" value="phone"/>
+            Cell phone
+        </label>
+        <label class="control control--radio">
+            <input type="radio" name="type" value="vbank"/>
+            Deposit only bank account deposit
+        </label>
+    </div>
+    <div>
+        <label class="control control--radio">
+            <input type="radio" name="type" value="kakao"/>
+            Kakao Pay
+        </label>
+    </div>
+</div>
+<div class="charge-total">
+    Total payment amount <span id="total">10</span>
+</div>
+<div class="charge-click">
+    <button class="charge-button">Charge</button>
+</div>
+</body>
+</html>
